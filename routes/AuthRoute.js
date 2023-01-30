@@ -3,7 +3,7 @@ const router = express.Router();
 const User = require("./models/userModel.js");
 
 router.get("/", (req, res) => {
-  res.send("Hello")
+  res.send("Hello World")
 })
 
 
