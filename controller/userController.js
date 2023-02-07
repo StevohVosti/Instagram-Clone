@@ -44,7 +44,24 @@ exports.getFollowers = async (req, res) => {
 
 exports.followUser = async (req, res) => {
   if (req.body.userId != req.params.id) {
+    try {
+      const user = await User.findById(req.params.id);
 
+      const currentUser = await User.findById(req.params.userId);
+
+      if (!user.followers.includes(req.body.userId)) {
+        await user.updateOne({ $push: { followers: req.body.userId } });
+        await currentUser.updateOne({ $push: { following: req.body.id } });
+        res.status(200).json({ msg: "You followed this User" });
+      } else {
+        res.status(404).json({ msg: "You already follow this user" });
+      }
+    } catch (err) {
+      return res.status(404).json({ err: err.message });
+    }
+  } else {
+    res.status(404).json({ msg: "You cannot follow yourself!" });
+  }
 };
 
 // unfollow user
