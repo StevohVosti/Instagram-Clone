@@ -1,0 +1,11 @@
+.homeOptions {
+  display: flex;
+  flex-direction: row;
+  padding: 15px;
+  align-items: center;
+  cursor: pointer;
+}
+
+.homeOptions:hover {
+  color: gray;
+}
