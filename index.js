@@ -6,6 +6,7 @@ const { default: mongoose } = require("mongoose");
 
 // Connectng to MongoDB
 mongoose.set("strictQuery", true);
+mongoose.set("strictQuery", false);
 connectDatabase();
 
 const server = app.listen(process.env.PORT, () => {
