@@ -16,6 +16,15 @@ exports.getAllUsers = async (req, res) => {
   return res.status(200).json({ users });
 };
 
+exports.getUserById = async (req, res) => {
+  try {
+    const user = await User.findOne(req.params.id);
+    res.status(200).json({ user });
+  } catch (err) {
+    res.status(404).json({ msg: err.message });
+  }
+};
+
 // get followers of user
 
 exports.getFollowers = async (req, res) => {
@@ -51,7 +60,7 @@ exports.followUser = async (req, res) => {
 
       if (!user.followers.includes(req.body.userId)) {
         await user.updateOne({ $push: { followers: req.body.userId } });
-        await currentUser.updateOne({ $push: { following: req.body.id } });
+        await currentUser.updateOne({ $push: { followings: req.body.id } });
         res.status(200).json({ msg: "You followed this User" });
       } else {
         res.status(404).json({ msg: "You already follow this user" });
@@ -75,7 +84,7 @@ exports.unfollowUser = async (req, res) => {
 
       if (user.followers.includes(req.body.userId)) {
         await user.updateOne({ $pull: { followers: req.body.userId } });
-        await currentUser.updateOne({ $pull: { following: req.body.id } });
+        await currentUser.updateOne({ $pull: { followings: req.body.id } });
         res.status(200).json({ msg: "User as been unfollowed" });
       } else {
         res.status(404).json({ msg: "You don't follow this user" });
