@@ -1,0 +1,9 @@
+export const NEW_POST_REQUEST = "NEW_POST_REQUEST";
+export const NEW_POST_SUCCESS = "NEW_POST_SUCCESS";
+export const NEW_POST_FAIL = "NEW_POST_FAIL";
+
+export const ALL_POST_REQUEST = "ALL_POST_REQUEST";
+export const ALL_POST_SUCCESS = "ALL_POST_SUCCESS";
+export const ALL_POST_FAIL = "ALL_POST_FAIL";
+
+export const CLEAR_ERRORS= "CLEAR_ERRORS";
