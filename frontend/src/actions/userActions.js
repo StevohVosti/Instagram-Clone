@@ -1,5 +1,8 @@
 import axios from "axios";
 import {
+  ALL_USERS_FAIL,
+  ALL_USERS_REQUEST,
+  ALL_USERS_SUCCESS,
   CLEAR_ERRORS,
   LOGIN_FAIL,
   LOGIN_REQUEST,
@@ -7,9 +10,9 @@ import {
   REGISTER_USER_FAIL,
   REGISTER_USER_REQUEST,
   REGISTER_USER_SUCCESS,
-  USER_DETAILS_FAIL,
-  USER_DETAILS_REQUEST,
-  USER_DETAILS_SUCCESS,
+  USERS_DETAILS_FAIL,
+  USERS_DETAILS_REQUEST,
+  USERS_DETAILS_SUCCESS,
 } from "../constants/userConstants";
 
 // Login
@@ -61,6 +64,34 @@ export const register = (userData) => async (dispatch) => {
     });
   }
 };
+
+// Get ALL USERS
+
+export const getAllUsers = () => async (dispatch) => {
+  try {
+    dispatch({ type: ALL_USERS_REQUEST });
+    const { data } = await axios.get(`/api/v1/users`);
+
+    dispatch({ type: ALL_USERS_SUCCESS, payload: data.users });
+  } catch (error) {
+    dispatch({ type: ALL_USERS_FAIL, payload: error.response.data.message });
+  }
+};
+
+// Get users by id
+
+export const getUsersById = (id) => async (dispatch) => {
+  try {
+    dispatch({type: USERS_DETAILS_REQUEST });
+
+    const { data } = await axios.get(`/api/v1/user/${id}`);
+
+    dispatch({type: USERS_DETAILS_SUCCESS, payload: data.user})
+  } catch (error){
+    dispatch({type: USERS_DETAILS_FAIL, payload: error.response.data.message})
+  }
+} 
+
 
 // Clearing Errors
 export const clearErrors = () => async (dispatch) => {
