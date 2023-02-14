@@ -1,21 +1,24 @@
+const User = require("../models/authModel");
 const jwt = require("jsonwebtoken");
 
-exports.verifyToken = async (req, res, next) => {
+exports.isAuthenticated = async (req, res, next) => {
   try {
-    let token = req.header("Authorization");
+    const { token } = req.cookies;
 
     if (!token) {
-      return res.status(403).send("Access Denied");
+      return res.status(401).json({
+        message: "Please login first",
+      });
     }
 
-    if (token.startsWith("Bearer ")) {
-      token = token.slice(7, token.length).trimLeft();
-    }
+    const decoded = await jwt.verify(token, process.env.JWT_SECRET);
 
-    const verified = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = verified;
+    req.user = await User.findById(decoded._id);
+
     next();
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+  } catch (error) {
+    res.status(500).json({
+      message: error.message,
+    });
   }
 };
