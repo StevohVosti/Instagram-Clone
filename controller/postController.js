@@ -1,123 +1,275 @@
 const Post = require("../models/postModel");
 const User = require("../models/authModel");
-
-// Create Post
-
+const cloudinary = require("cloudinary");
 exports.createPost = async (req, res) => {
-  const newPost = new Post(req.body);
-
   try {
-    const savedPost = await newPost.save();
-    res.status(200).json({ msg: "Post created successfully", data: savedPost });
-  } catch (err) {
-    res.status(404).json({ err: err.message });
+    const myCloud = await cloudinary.v2.uploader.upload(req.body.image, {
+      folder: "posts",
+    });
+    const newPostData = {
+      caption: req.body.caption,
+      image: {
+        public_id: myCloud.public_id,
+        url: myCloud.secure_url,
+      },
+      owner: req.user._id,
+    };
+
+    const post = await Post.create(newPostData);
+
+    const user = await User.findById(req.user._id);
+
+    user.posts.unshift(post._id);
+
+    await user.save();
+    res.status(201).json({
+      success: true,
+      message: "Post created",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
-
-//  Update Post
-
-exports.updatePost = async (req, res) => {
-  try {
-    const post = await Post.findById(req.params.id);
-
-    if (post.userId === req.body.userId) {
-      await post.updateOne({ $set: req.body }, { new: true });
-
-      res.status(200).json({ msg: "You post as been updated", data: post });
-    } else {
-      res.status(404).json({ msg: "You can only update you post!" });
-    }
-  } catch (err) {
-    res.status(404).json({ err: err.message });
-  }
-};
-
-// Delete Post
 
 exports.deletePost = async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);
-    if (post.userId === req.body.userId) {
-      await post.deleteOne({ $set: req.body });
 
-      res.status(200).json({ msg: "You post as been deleted" });
-    } else {
-      res.status(404).json({ msg: "You can only delete you post!" });
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: "Post not found",
+      });
     }
-  } catch (err) {
-    res.status(404).json({ err: err.message });
+
+    if (post.owner.toString() !== req.user._id.toString()) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    await cloudinary.v2.uploader.destroy(post.image.public_id);
+
+    await post.remove();
+
+    const user = await User.findById(req.user._id);
+
+    const index = user.posts.indexOf(req.params.id);
+    user.posts.splice(index, 1);
+
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Post deleted",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
-// Get All Posts
-
-exports.getAllPost = async (req, res) => {
-  try {
-    const posts = await Post.find();
-
-    res.status(200).json({ posts });
-  } catch (err) {
-    res.status(404).json({ err: err.message });
-  }
-};
-
-// Like
-
-exports.likePost = async (req, res) => {
+exports.likeAndUnlikePost = async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);
-    if (!post.likes.includes(req.body.userId)) {
-      await post.updateOne({ $push: { likes: req.body.userId } });
-      res.status(200).json({ msg: "the post has been liked", post });
-    } else {
-      await post.updateOne({ $pull: { likes: req.body.userId } });
-      res.status(404).json({ msg: "the post has been dislike" });
+
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: "Post not found",
+      });
     }
-  } catch (err) {
-    res.status(404).json({ err: err.message });
+
+    if (post.likes.includes(req.user._id)) {
+      const index = post.likes.indexOf(req.user._id);
+
+      post.likes.splice(index, 1);
+
+      await post.save();
+
+      return res.status(200).json({
+        success: true,
+        message: "Post Unliked",
+      });
+    } else {
+      post.likes.push(req.user._id);
+
+      await post.save();
+
+      return res.status(200).json({
+        success: true,
+        message: "Post Liked",
+      });
+    }
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
-// Get post by id
+exports.getPostOfFollowing = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
 
-exports.getPostId = async (req, res) => {
+    const posts = await Post.find({
+      owner: {
+        $in: user.following,
+      },
+    }).populate("owner likes comments.user");
+
+    res.status(200).json({
+      success: true,
+      posts: posts.reverse(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.updateCaption = async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);
-    res.status(200).json(post);
-  } catch (err) {
-    res.status(404).json({ err: err.message });
+
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: "Post not found",
+      });
+    }
+
+    if (post.owner.toString() !== req.user._id.toString()) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    post.caption = req.body.caption;
+    await post.save();
+    res.status(200).json({
+      success: true,
+      message: "Post updated",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
-// Post Timeline
-
-exports.getTimeline = async (req, res) => {
+exports.commentOnPost = async (req, res) => {
   try {
-    const currentUser = await User.findById(req.params.userId);
-    const userPosts = await Post.find({ userId: currentUser._id });
+    const post = await Post.findById(req.params.id);
 
-    const friendsPosts = await Promise.all(
-      currentUser.followings.map((friendId) => {
-        return Post.find({ userId: friendId });
-      })
-    );
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: "Post not found",
+      });
+    }
 
-    res.status(200).json(userPosts.concat(...friendsPosts));
-  } catch (err) {
-    res.status(404).json({ err: err.message });
+    let commentIndex = -1;
+
+    // Checking if comment already exists
+
+    post.comments.forEach((item, index) => {
+      if (item.user.toString() === req.user._id.toString()) {
+        commentIndex = index;
+      }
+    });
+
+    if (commentIndex !== -1) {
+      post.comments[commentIndex].comment = req.body.comment;
+
+      await post.save();
+
+      return res.status(200).json({
+        success: true,
+        message: "Comment Updated",
+      });
+    } else {
+      post.comments.push({
+        user: req.user._id,
+        comment: req.body.comment,
+      });
+
+      await post.save();
+      return res.status(200).json({
+        success: true,
+        message: "Comment added",
+      });
+    }
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
-// Profile Post
-
-exports.getUserPost = async(req, res) => {
+exports.deleteComment = async (req, res) => {
   try {
-    const user = await User.findOne({userName: req.params.userName});
-    const posts = await Post.find({userId: user._id});
+    const post = await Post.findById(req.params.id);
 
-    res.status(200).json(posts)
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: "Post not found",
+      });
+    }
 
-  } catch(err){
-    res.status(404).json({err: err.message});
+    // Checking If owner wants to delete
+
+    if (post.owner.toString() === req.user._id.toString()) {
+      if (req.body.commentId === undefined) {
+        return res.status(400).json({
+          success: false,
+          message: "Comment Id is required",
+        });
+      }
+
+      post.comments.forEach((item, index) => {
+        if (item._id.toString() === req.body.commentId.toString()) {
+          return post.comments.splice(index, 1);
+        }
+      });
+
+      await post.save();
+
+      return res.status(200).json({
+        success: true,
+        message: "Selected Comment has deleted",
+      });
+    } else {
+      post.comments.forEach((item, index) => {
+        if (item.user.toString() === req.user._id.toString()) {
+          return post.comments.splice(index, 1);
+        }
+      });
+
+      await post.save();
+
+      return res.status(200).json({
+        success: true,
+        message: "Your Comment has deleted",
+      });
+    }
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
-}
+};
