@@ -7,6 +7,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "serve": "nodemon --watch . index.js",
     "start": "node index.js",
+    "dev": "env-cmd node --watch index.js"
   },
   "repository": {
     "type": "git",
