@@ -1,38 +1,30 @@
 const express = require("express");
 const {
   createPost,
-  updatePost,
+  likeAndUnlikePost,
   deletePost,
-  getAllPost,
-  likePost,
-  getPostId,
-  getUserPost,
-  getTimeline,
+  getPostOfFollowing,
+  updateCaption,
+  commentOnPost,
+  deleteComment,
 } = require("../controller/postController");
-// const { verifyToken } = require("../middleware/auth");
-const multer = require("multer");
+const { isAuthenticated } = require("../middleware/auth");
 
 const router = express.Router();
 
-// /* FILE STORAGE */
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "public/assets");
-  },
-  filename: function (req, file, cb) {
-    cb(null, file.originalname);
-  },
-});
-const upload = multer({ storage });
+router.route("/post/upload").post(isAuthenticated, createPost);
 
-router.route("/posts").post(upload.single("picture"), createPost);
-router.route("/:id").put(updatePost);
-router.route("/:id").delete(deletePost);
-router.route("/").get(getAllPost);
-router.route("/:id/like").put(likePost);
-router.route("/:id").get(getPostId);
-router.route("/timeline/:userId").get(getTimeline);
-router.route("/profile/:userName").get(getUserPost);
+router
+  .route("/post/:id")
+  .get(isAuthenticated, likeAndUnlikePost)
+  .put(isAuthenticated, updateCaption)
+  .delete(isAuthenticated, deletePost);
 
+router.route("/posts").get(isAuthenticated, getPostOfFollowing);
+
+router
+  .route("/post/comment/:id")
+  .put(isAuthenticated, commentOnPost)
+  .delete(isAuthenticated, deleteComment);
 
 module.exports = router;
