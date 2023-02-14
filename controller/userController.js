@@ -1,98 +1,524 @@
 const User = require("../models/authModel");
+const Post = require("../models/postModel");
+const { sendEmail } = require("../middleware/sendEmail");
+const crypto = require("crypto");
+const cloudinary = require("cloudinary");
 
-exports.getAllUsers = async (req, res) => {
-  let users;
-
+// register user
+exports.register = async (req, res) => {
   try {
-    users = await User.find();
-  } catch (err) {
-    res.status(404).json({ err: err.message });
-  }
+    const { name, email, userName, password, avatar } = req.body;
 
-  if (!users) {
-    return res.status(404).json({ msg: "No users Found" });
-  }
+    let user = await User.findOne({ email });
+    if (user) {
+      return res
+        .status(400)
+        .json({ success: false, message: "User already exists" });
+    }
 
-  return res.status(200).json({ users });
+    const myCloud = await cloudinary.v2.uploader.upload(avatar, {
+      folder: "avatars",
+    });
+
+    user = await User.create({
+      name,
+      userName,
+      email,
+      password,
+      avatar: { public_id: myCloud.public_id, url: myCloud.secure_url },
+    });
+
+    const token = await user.generateToken();
+
+    const options = {
+      expires: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+      httpOnly: true,
+    };
+
+    res.status(201).cookie("token", token, options).json({
+      success: true,
+      user,
+      token,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
 };
 
-exports.getUserById = async (req, res) => {
+// login user
+exports.login = async (req, res) => {
   try {
-    const user = await User.findOne(req.params.id);
-    res.status(200).json({ user });
-  } catch (err) {
-    res.status(404).json({ msg: err.message });
+    const { email, password } = req.body;
+
+    const user = await User.findOne({ email })
+      .select("+password")
+      .populate("posts followers following");
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "User does not exist",
+      });
+    }
+
+    const isMatch = await user.matchPassword(password);
+
+    if (!isMatch) {
+      return res.status(400).json({
+        success: false,
+        message: "Incorrect password",
+      });
+    }
+
+    const token = await user.generateToken();
+
+    const options = {
+      expires: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+      httpOnly: true,
+    };
+
+    res.status(200).cookie("token", token, options).json({
+      success: true,
+      user,
+      token,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
-// get followers of user
-
-exports.getFollowers = async (req, res) => {
+// logout
+exports.logout = async (req, res) => {
   try {
-    const user = await User.findById(req.params.userId);
-    const friends = await Promise.all(
-      user.followings.map((fri_id) => {
-        return User.findById(fri_id);
-      })
+    res
+      .status(200)
+      .cookie("token", null, { expires: new Date(Date.now()), httpOnly: true })
+      .json({
+        success: true,
+        message: "Logged out",
+      });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// follow user
+exports.followUser = async (req, res) => {
+  try {
+    const userToFollow = await User.findById(req.params.id);
+    const loggedInUser = await User.findById(req.user._id);
+
+    if (!userToFollow) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    if (loggedInUser.following.includes(userToFollow._id)) {
+      const indexfollowing = loggedInUser.following.indexOf(userToFollow._id);
+      const indexfollowers = userToFollow.followers.indexOf(loggedInUser._id);
+
+      loggedInUser.following.splice(indexfollowing, 1);
+      userToFollow.followers.splice(indexfollowers, 1);
+
+      await loggedInUser.save();
+      await userToFollow.save();
+
+      res.status(200).json({
+        success: true,
+        message: "User Unfollowed",
+      });
+    } else {
+      loggedInUser.following.push(userToFollow._id);
+      userToFollow.followers.push(loggedInUser._id);
+
+      await loggedInUser.save();
+      await userToFollow.save();
+
+      res.status(200).json({
+        success: true,
+        message: "User followed",
+      });
+    }
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// update Password
+exports.updatePassword = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select("+password");
+
+    const { oldPassword, newPassword } = req.body;
+
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide old and new password",
+      });
+    }
+
+    const isMatch = await user.matchPassword(oldPassword);
+
+    if (!isMatch) {
+      return res.status(400).json({
+        success: false,
+        message: "Incorrect Old password",
+      });
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Password Updated",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// update user profile
+exports.updateProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+
+    const { name, email, avatar } = req.body;
+
+    if (name) {
+      user.name = name;
+    }
+    if (email) {
+      user.email = email;
+    }
+
+    if (avatar) {
+      await cloudinary.v2.uploader.destroy(user.avatar.public_id);
+
+      const myCloud = await cloudinary.v2.uploader.upload(avatar, {
+        folder: "avatars",
+      });
+      user.avatar.public_id = myCloud.public_id;
+      user.avatar.url = myCloud.secure_url;
+    }
+
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Profile Updated",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// delete user Profile
+exports.deleteMyProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    const posts = user.posts;
+    const followers = user.followers;
+    const following = user.following;
+    const userId = user._id;
+
+    // Removing Avatar from cloudinary
+    await cloudinary.v2.uploader.destroy(user.avatar.public_id);
+
+    await user.remove();
+
+    // Logout user after deleting profile
+
+    res.cookie("token", null, {
+      expires: new Date(Date.now()),
+      httpOnly: true,
+    });
+
+    // Delete all posts of the user
+    for (let i = 0; i < posts.length; i++) {
+      const post = await Post.findById(posts[i]);
+      await cloudinary.v2.uploader.destroy(post.image.public_id);
+      await post.remove();
+    }
+
+    // Removing User from Followers Following
+    for (let i = 0; i < followers.length; i++) {
+      const follower = await User.findById(followers[i]);
+
+      const index = follower.following.indexOf(userId);
+      follower.following.splice(index, 1);
+      await follower.save();
+    }
+
+    // Removing User from Following's Followers
+    for (let i = 0; i < following.length; i++) {
+      const follows = await User.findById(following[i]);
+
+      const index = follows.followers.indexOf(userId);
+      follows.followers.splice(index, 1);
+      await follows.save();
+    }
+
+    // removing all comments of the user from all posts
+    const allPosts = await Post.find();
+
+    for (let i = 0; i < allPosts.length; i++) {
+      const post = await Post.findById(allPosts[i]._id);
+
+      for (let j = 0; j < post.comments.length; j++) {
+        if (post.comments[j].user === userId) {
+          post.comments.splice(j, 1);
+        }
+      }
+      await post.save();
+    }
+    // removing all likes of the user from all posts
+
+    for (let i = 0; i < allPosts.length; i++) {
+      const post = await Post.findById(allPosts[i]._id);
+
+      for (let j = 0; j < post.likes.length; j++) {
+        if (post.likes[j] === userId) {
+          post.likes.splice(j, 1);
+        }
+      }
+      await post.save();
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Profile Deleted",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// Get loginUser Profile
+exports.myProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).populate(
+      "posts followers following"
     );
 
-    let friendsList = [];
-
-    friends.map((friend) => {
-      const { _id, userName, avatar } = friend;
-
-      friendsList.push({ _id, userName, avatar });
+    res.status(200).json({
+      success: true,
+      user,
     });
-    res.status(200).json({ friendsList });
-  } catch (err) {
-    res.status(404).json({ err: err.message });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
-// Follow
+// Get user Profile
+exports.getUserProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).populate(
+      "posts followers following"
+    );
 
-exports.followUser = async (req, res) => {
-  if (req.body.userId != req.params.id) {
-    try {
-      const user = await User.findById(req.params.id);
-
-      const currentUser = await User.findById(req.params.userId);
-
-      if (!user.followers.includes(req.body.userId)) {
-        await user.updateOne({ $push: { followers: req.body.userId } });
-        await currentUser.updateOne({ $push: { followings: req.body.id } });
-        res.status(200).json({ msg: "You followed this User" });
-      } else {
-        res.status(404).json({ msg: "You already follow this user" });
-      }
-    } catch (err) {
-      return res.status(404).json({ err: err.message });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
     }
-  } else {
-    res.status(404).json({ msg: "You cannot follow yourself!" });
+
+    res.status(200).json({
+      success: true,
+      user,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
-// unfollow user
+// Get All users
+exports.getAllUsers = async (req, res) => {
+  try {
+    const users = await User.find({
+      name: { $regex: req.query.name, $options: "i" },
+    });
 
-exports.unfollowUser = async (req, res) => {
-  if (req.body.userId != req.params.id) {
-    try {
-      const user = await User.findById(req.params.id);
+    res.status(200).json({
+      success: true,
+      users,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
 
-      const currentUser = await User.findById(req.params.userId);
+// ForgotPassword
+exports.forgotPassword = async (req, res) => {
+  try {
+    const user = await User.findOne({ email: req.body.email });
 
-      if (user.followers.includes(req.body.userId)) {
-        await user.updateOne({ $pull: { followers: req.body.userId } });
-        await currentUser.updateOne({ $pull: { followings: req.body.id } });
-        res.status(200).json({ msg: "User as been unfollowed" });
-      } else {
-        res.status(404).json({ msg: "You don't follow this user" });
-      }
-    } catch (err) {
-      return res.status(404).json({ err: err.message });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
     }
-  } else {
-    res.status(404).json({ msg: "You cannot unfollow yourself!" });
+
+    const resetPasswordToken = user.getResetPasswordToken();
+
+    await user.save();
+
+    const resetUrl = `${req.protocol}://${req.get(
+      "host"
+    )}/password/reset/${resetPasswordToken}`;
+
+    const message = `Reset Your Password by clicking on the link below: \n\n ${resetUrl}`;
+
+    try {
+      await sendEmail({
+        email: user.email,
+        subject: "Reset Password",
+        message,
+      });
+
+      res.status(200).json({
+        success: true,
+        message: `Email sent to ${user.email}`,
+      });
+    } catch (error) {
+      user.resetPasswordToken = undefined;
+      user.resetPasswordExpire = undefined;
+      await user.save();
+
+      res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// ResetPassword
+exports.resetPassword = async (req, res) => {
+  try {
+    const resetPasswordToken = crypto
+      .createHash("sha256")
+      .update(req.params.token)
+      .digest("hex");
+
+    const user = await User.findOne({
+      resetPasswordToken,
+      resetPasswordExpire: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Token is invalid or has expired",
+      });
+    }
+
+    user.password = req.body.password;
+
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpire = undefined;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Password Updated",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// Get my Post
+exports.getMyPosts = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+
+    const posts = [];
+
+    for (let i = 0; i < user.posts.length; i++) {
+      const post = await Post.findById(user.posts[i]).populate(
+        "likes comments.user owner"
+      );
+      posts.push(post);
+    }
+
+    res.status(200).json({
+      success: true,
+      posts,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// Get user post
+exports.getUserPosts = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+
+    const posts = [];
+
+    for (let i = 0; i < user.posts.length; i++) {
+      const post = await Post.findById(user.posts[i]).populate(
+        "likes comments.user owner"
+      );
+      posts.push(post);
+    }
+
+    res.status(200).json({
+      success: true,
+      posts,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
