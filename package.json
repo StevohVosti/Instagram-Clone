@@ -7,7 +7,10 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "serve": "nodemon --watch . index.js",
     "start": "node index.js",
-    "dev": "env-cmd node --watch index.js"
+      "dev": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
   },
   "repository": {
     "type": "git",
