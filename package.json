@@ -7,8 +7,6 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "serve": "nodemon --watch . index.js",
     "start": "node index.js",
-      "dev": "react-scripts start",
-    "build": "react-scripts build",
   },
   "repository": {
     "type": "git",
