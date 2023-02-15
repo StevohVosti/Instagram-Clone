@@ -1,5 +1,6 @@
 {
   "name": "ig",
+  "proxy": "http://192.168.1.106:5000/",
   "version": "1.0.0",
   "description": "This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).",
   "main": "index.js",
@@ -7,6 +8,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "serve": "nodemon --watch . index.js",
     "start": "node index.js",
+    "dev": "env-cmd node --watch index.js"
   },
   "repository": {
     "type": "git",
