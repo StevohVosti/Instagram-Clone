@@ -1,23 +1,37 @@
 const express = require("express");
 const app = express();
+const cookieParser = require("cookie-parser");
+const fileupload = require('express-fileupload'); 
 
-app.use(express.json());
+const path = require("path");
+if (process.env.NODE_ENV !== "production") {
+  require("dotenv").config({ path: "config/config.env" });
+}
 
-// Imports
-const auth = require("./routes/authRoute");
-const users = require("./routes/usersRoute");
-const post  = require("./routes/postRoute");
+// Using Middlewares
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
+app.use(cookieParser());
+app.use(fileupload({useTempFiles: true}));
 
+// Importing Routes
+const post = require("./routes/postRoute");
+const user = require("./routes/usersRoute");
 
-app.use("/api/v1", auth);
-app.use("/api/v1", users);
+// Using Routes
 app.use("/api/v1", post);
+app.use("/api/v1", user);
 
-    // SERVING STATIC FILES
-    app.use(express.static("frontend/build"));
-    // SERVE UP INDEX.HTML IF IT DOESNOT RECORGANISE THE ROUTE
-    app.get("*", (req, res) => {
-      res.sendFile(path.resolve(__dirname, "frontend", "build", "index.html"));
-    });
+// serving the frontend
+app.use(express.static(path.join(__dirname, "./frontend/build")))
+
+app.get("*", (req, res) => {
+    res.sendFile(
+        path.join(__dirname, "./frontend/build/index.html"),
+        function (err) {
+            res.status(500).send(err)
+        }
+    )
+})
 
 module.exports = app;
