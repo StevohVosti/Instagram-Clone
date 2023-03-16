@@ -68,7 +68,7 @@ const UpdateProfile = () => {
         <MetaData title="Update Profile" />
       <form className="updateProfileForm" onSubmit={submitHandler}>
         <Typography variant="h3" style={{ padding: "2vmax" }}>
-          Social Aap
+      
         </Typography>
 
         <Avatar
